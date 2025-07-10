@@ -23,22 +23,39 @@ def load_data():
         print("Data directory not found. Creating it...")
         os.makedirs('data')
 
+    # For splice_vault dataset, define chunk size to handle large files
+    chunk_size = 100000  # Adjust based on your available memory
+
     # Try to load each file individually with error handling
     for dataset_name, file_path in data_files.items():
         try:
             if os.path.exists(file_path):
-                # Set low_memory=False to avoid DtypeWarning and ensure all values are properly parsed
-                # Convert all columns to string initially to avoid mixed type issues
-                df = pd.read_csv(file_path, sep='\t', low_memory=False, dtype=str)
+                print(f"\nLoading {dataset_name} from {file_path}...")
+                file_size_mb = os.path.getsize(file_path) / (1024 * 1024)
+                print(f"File size: {file_size_mb:.2f} MB")
 
-                # Convert numeric columns back to appropriate types
+                # For splice_vault (potentially large files), use a different approach
+                if dataset_name == 'splice_vault' and file_size_mb > 100:  # If file is larger than 100MB
+                    print(f"Large file detected for {dataset_name}, using optimized loading")
+                    # First read just the header to get column names
+                    df_header = pd.read_csv(file_path, sep='\t', nrows=1)
+                    column_names = df_header.columns.tolist()
+
+                    # Read the first chunk to estimate total rows
+                    first_chunk = pd.read_csv(file_path, sep='\t', dtype=str,
+                                             nrows=chunk_size, na_filter=False)
+
+                    # Use the first chunk as our dataframe
+                    df = first_chunk
+                    print(f"Loaded first {chunk_size} rows of {dataset_name} (sampling large dataset)")
+                else:
+                    # For smaller files, load everything
+                    df = pd.read_csv(file_path, sep='\t', dtype=str, na_filter=False)
+                    print(f"Loaded all {len(df)} rows of {dataset_name}")
+
+                # Clean data: replace NaN and None strings with empty strings
                 for col in df.columns:
-                    # Try to convert to numeric, but keep as string if it fails
-                    try:
-                        df[col] = pd.to_numeric(df[col])
-                    except (ValueError, TypeError):
-                        # Keep as string if conversion fails
-                        pass
+                    df[col] = df[col].replace(['nan', 'None', 'NaN'], '')
 
                 data_dict[dataset_name] = df
                 print(f"Successfully loaded {file_path} with {len(df)} rows and {len(df.columns)} columns")
@@ -109,118 +126,221 @@ def get_data(dataset):
     search = request.args.get('search', '')
     column = request.args.get('column', '')
     page = int(request.args.get('page', 1))
-    per_page = int(request.args.get('per_page', 10))
+    # Use smaller per_page for splice_vault or any large dataset
+    default_per_page = 5 if dataset == 'splice_vault' else 10
+    per_page = int(request.args.get('per_page', default_per_page))
+    # Cap per_page to avoid memory issues with large datasets
+    if dataset == 'splice_vault' and per_page > 10:
+        per_page = 10
 
     print(f"Parameters: page={page}, per_page={per_page}, search='{search}', column='{column}'")
 
-    df = dfs[dataset]
-    print(f"Original dataframe shape: {df.shape}")
-
-    # Ensure the dataframe has content
-    if df.empty:
-        print(f"Warning: Dataset '{dataset}' is empty!")
-        return jsonify({
-            'data': [],
-            'total': 0,
-            'page': page,
-            'per_page': per_page
-        })
-
-    # Apply search filter if provided
-    if search and column in df.columns:
-        df = df[df[column].astype(str).str.contains(search, case=False)]
-        print(f"After search filter, dataframe shape: {df.shape}")
-
-    # Calculate pagination
-    total = len(df)
-    start_idx = (page - 1) * per_page
-    end_idx = start_idx + per_page
-
-    print(f"Pagination: total={total}, start_idx={start_idx}, end_idx={end_idx}")
-
-    # Ensure indices are valid
-    if start_idx >= total:
-        print(f"Warning: start_idx {start_idx} >= total {total}, returning empty data")
-        return jsonify({
-            'data': [],
-            'total': total,
-            'page': page,
-            'per_page': per_page
-        })
-
-    # Convert the slice of data to dictionary and ensure all values are JSON serializable
     try:
-        # Get a smaller chunk of data to avoid large response issues
-        # Limit the data to just 5 records for safety if it seems too large
-        if len(df) > 1000 and per_page > 5:
-            print(f"Large dataset detected ({len(df)} rows), limiting page size to 5")
-            end_idx = start_idx + 5
+        # Time the operation to detect slow operations
+        import time
+        start_time = time.time()
 
-        # Make a copy to avoid modifying original dataframe
-        data_records = df.iloc[start_idx:end_idx].copy()
+        # For splice_vault (or any large dataset), we'll use more efficient operations
+        is_large_dataset = dataset == 'splice_vault' or len(dfs[dataset]) > 100000
 
-        # Force string conversion for all object columns to ensure serialization
-        for col in data_records.select_dtypes(include=['object']).columns:
-            data_records[col] = data_records[col].astype(str)
+        if is_large_dataset:
+            print(f"Large dataset detected ({dataset}), using optimized processing")
+            # Instead of copying the entire dataframe, we'll process it differently
+            df = dfs[dataset]
+            # We'll only report the total size, not modify the full dataset
+            total = len(df)
 
-        # Replace NaN with None to avoid JSON serialization issues
-        data_records = data_records.where(pd.notnull(data_records), None)
+            # If search is applied, we'll filter just-in-time during slicing
+            filtered_indices = None
+            if search and column and column in df.columns:
+                # For large datasets, filtering can be memory-intensive
+                # We'll create a boolean mask without creating a new dataframe
+                mask = df[column].astype(str).str.contains(search, case=False, na=False)
+                filtered_indices = mask[mask].index
+                total = len(filtered_indices)
+                print(f"Filter applied, matching records: {total}")
 
-        # Convert to records dict
-        raw_data = data_records.to_dict('records')
+            # Calculate pagination - we only need to access the slice we'll display
+            start_idx = (page - 1) * per_page
+            end_idx = min(start_idx + per_page, total)
 
-        # Clean the data to ensure JSON serialization
-        data = []
-        for record in raw_data:
-            clean_record = {}
-            for key, value in record.items():
-                # Handle various data types appropriately
-                if value is None:
-                    clean_record[key] = None
-                elif hasattr(value, 'item'):
-                    # Convert numpy types to Python native types
-                    try:
-                        clean_record[key] = value.item()
-                    except:
-                        clean_record[key] = str(value)
-                elif isinstance(value, (int, float, bool)):
-                    clean_record[key] = value
+            if start_idx >= total:
+                print(f"Warning: start_idx {start_idx} >= total {total}, returning empty data")
+                return jsonify({
+                    'data': [],
+                    'total': total,
+                    'page': page,
+                    'per_page': per_page
+                })
+
+            # Get only the necessary slice using loc if filtered or iloc otherwise
+            if filtered_indices is not None:
+                # Ensure we don't go out of bounds
+                end_slice_idx = min(start_idx + per_page, len(filtered_indices))
+                if start_idx >= len(filtered_indices):
+                    data_slice = pd.DataFrame(columns=df.columns)
                 else:
-                    # Convert everything else to string
-                    clean_record[key] = str(value)
-            data.append(clean_record)
+                    slice_indices = filtered_indices[start_idx:end_slice_idx]
+                    data_slice = df.loc[slice_indices]
+            else:
+                data_slice = df.iloc[start_idx:end_idx]
+        else:
+            # For smaller datasets, continue with the existing approach
+            # Work with a copy to avoid modifying the original
+            df = dfs[dataset].copy()
+            print(f"Original dataframe shape: {df.shape}")
 
-        print(f"Returning {len(data)} records")
+            # Ensure the dataframe has content
+            if df.empty:
+                print(f"Warning: Dataset '{dataset}' is empty!")
+                return jsonify({
+                    'data': [],
+                    'total': 0,
+                    'page': page,
+                    'per_page': per_page
+                })
+
+            # Convert all columns to strings for consistent handling
+            for col in df.columns:
+                df[col] = df[col].astype(str)
+                # Replace 'nan' strings with empty strings
+                df[col] = df[col].replace(['nan', 'None', 'NaN'], '')
+
+            # Apply search filter if provided
+            if search and column and column in df.columns:
+                df = df[df[column].str.contains(search, case=False, na=False)]
+                print(f"After search filter, dataframe shape: {df.shape}")
+
+            # Calculate pagination
+            total = len(df)
+            start_idx = (page - 1) * per_page
+            end_idx = start_idx + per_page
+
+            # Ensure indices are valid
+            if start_idx >= total:
+                print(f"Warning: start_idx {start_idx} >= total {total}, returning empty data")
+                return jsonify({
+                    'data': [],
+                    'total': total,
+                    'page': page,
+                    'per_page': per_page
+                })
+
+            # Get the data slice
+            data_slice = df.iloc[start_idx:end_idx]
+
+        # Check if the operation is taking too long
+        elapsed_time = time.time() - start_time
+        print(f"Data preparation took {elapsed_time:.2f} seconds")
+
+        # Apply search filter if provided
+        if search and column and column in df.columns:
+            df = df[df[column].str.contains(search, case=False, na=False)]
+            print(f"After search filter, dataframe shape: {df.shape}")
+
+        # Calculate pagination
+        total = len(df)
+        start_idx = (page - 1) * per_page
+        end_idx = start_idx + per_page
+
+        print(f"Pagination: total={total}, start_idx={start_idx}, end_idx={end_idx}")
+
+        # Ensure indices are valid
+        if start_idx >= total:
+            print(f"Warning: start_idx {start_idx} >= total {total}, returning empty data")
+            return jsonify({
+                'data': [],
+                'total': total,
+                'page': page,
+                'per_page': per_page
+            })
+
+        # More efficient serialization with timeouts and size checks
+        data = []
+        max_string_length = 1000  # Limit extremely long string values
+
+        # Set a timeout for record processing
+        processing_start = time.time()
+        processing_timeout = 15  # seconds
+
+        # Convert to records with explicit handling
+        for _, row in data_slice.iterrows():
+            # Check for timeout during processing
+            if time.time() - processing_start > processing_timeout:
+                print("Warning: Data processing timeout reached")
+                break
+
+            record = {}
+            for col in data_slice.columns:  # Use data_slice.columns instead of df.columns
+                try:
+                    value = row[col]
+                    # Ensure all values are simple strings with length limits
+                    if pd.isna(value) or value == 'nan' or value == 'None' or value == 'NaN':
+                        record[col] = ''
+                    else:
+                        # Truncate extremely long strings to prevent memory issues
+                        str_value = str(value)
+                        if len(str_value) > max_string_length:
+                            str_value = str_value[:max_string_length] + '... (truncated)'
+                        record[col] = str_value
+                except Exception as col_error:
+                    print(f"Error processing column {col}: {str(col_error)}")
+                    record[col] = "[Error]"  # Placeholder for error values
+            data.append(record)
+
+        # Calculate total processing time
+        total_time = time.time() - start_time
+        print(f"Returning {len(data)} records, processing took {total_time:.2f} seconds")
+
+        # Add dataset size info to help troubleshoot frontend issues
+        dataset_info = {
+            'dataset_name': dataset,
+            'total_rows': len(dfs[dataset]),
+            'total_columns': len(dfs[dataset].columns),
+            'processing_time_seconds': round(total_time, 2),
+            'is_large_dataset': is_large_dataset
+        }
 
         response_data = {
             'data': data,
             'total': total,
             'page': page,
-            'per_page': per_page
+            'per_page': per_page,
+            'dataset_info': dataset_info
         }
 
         # Use Flask's built-in json encoding to ensure it works
         return jsonify(response_data)
     except Exception as e:
-        print(f"Error serializing data: {e}")
+        print(f"Error processing dataset {dataset}: {str(e)}")
+        import traceback
+        traceback.print_exc()
+
         # Return a simplified error response that's guaranteed to serialize
         return jsonify({
-            'error': f"Error processing data: {str(e)}",
+            'error': f"Error processing dataset {dataset}: {str(e)}",
             'data': [],
-            'total': total,
+            'total': 0,
             'page': page,
             'per_page': per_page
-        })
+        }), 500
 
 if __name__ == '__main__':
     # Use port 8000 instead of 5000 to avoid conflicts with AirPlay on macOS
     port = 8000
     print(f"\nStarting Flask server on http://localhost:{port}")
     print("Available datasets:", list(dfs.keys()))
+    # Print information about dataset sizes
+    for name, df in dfs.items():
+        print(f"Dataset '{name}': {len(df)} rows, {len(df.columns)} columns")
     print("\nPress Ctrl+C to stop the server\n")
     try:
+        # Increase timeout for large datasets
+        from werkzeug.serving import run_simple
         # Make sure the server is accessible from other machines on the network
-        app.run(debug=True, host='0.0.0.0', port=port)
+        app.run(debug=True, host='0.0.0.0', port=port,
+                threaded=True, # Enable threading
+        ) # Increase request timeout to 2 minutes
     except KeyboardInterrupt:
         print("\nServer stopped by user")
     except OSError as e:

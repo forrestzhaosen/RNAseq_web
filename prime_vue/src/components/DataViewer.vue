@@ -22,6 +22,17 @@
         <h2>{{ formatDatasetName(selectedDataset) }}</h2>
       </div>
 
+      <!-- Warning for large datasets -->
+      <div v-if="selectedDataset === 'splice_vault'" class="p-message p-message-warning mb-3">
+        <div class="p-message-wrapper">
+          <span class="p-message-icon pi pi-exclamation-triangle"></span>
+          <div class="p-message-text">
+            This is a large dataset. Loading and searching may take longer than usual.
+            Results are limited to 5 records per page for better performance.
+          </div>
+        </div>
+      </div>
+
       <!-- Error Message -->
       <div v-if="error" class="p-message p-message-error mb-3">
         <div class="p-message-wrapper">
@@ -218,26 +229,48 @@ export default {
       this.loading = true
       this.error = null
       try {
-        // Use smaller page size for large datasets
+        // Use smaller page size for splice_vault dataset
+        const isLargeDataset = this.selectedDataset === 'splice_vault';
         const params = {
           page: page,
-          per_page: 5 // Reduced from 10 to ensure smaller payload
+          per_page: isLargeDataset ? 5 : 10
         }
+
+        // Set a longer timeout for splice_vault
+        const timeoutMs = isLargeDataset ? 60000 : 10000; // 60 seconds for splice_vault, 10 for others
 
         if (this.searchQuery && this.selectedColumn) {
           params.search = this.searchQuery
           params.column = this.selectedColumn
         }
 
+        // Show specific message for splice_vault
+        if (isLargeDataset) {
+          console.log("Loading large dataset (splice_vault). This may take longer than usual.");
+        }
+
         console.log(`Fetching data for ${this.selectedDataset} with params:`, params);
-        // Add timeout and validation options
+
+        // Start a timer to measure the request duration
+        const requestStartTime = new Date().getTime();
+
+        // Add timeout and validation options - longer timeout for large datasets
         const response = await axios.get(`${baseUrl}/api/data/${this.selectedDataset}`, {
           params,
-          timeout: 10000, // 10 second timeout
+          timeout: timeoutMs, // Use the dataset-specific timeout
           validateStatus: function (status) {
             return status < 500; // Only reject if server error
           }
-        })
+        });
+
+        // Calculate how long the request took
+        const requestDuration = new Date().getTime() - requestStartTime;
+        console.log(`Request completed in ${requestDuration/1000} seconds`);
+
+        // Log dataset info if available
+        if (response.data && response.data.dataset_info) {
+          console.log('Dataset info:', response.data.dataset_info);
+        }
         console.log('Response data:', response.data);
 
         // Check for HTTP errors first
