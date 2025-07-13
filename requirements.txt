@@ -1,3 +1,10 @@
-flask
-flask-cors
-pandas
+flask==3.1.1
+flask-cors==6.0.1
+pandas==2.3.1
+numpy==2.3.1
+sqlalchemy==2.0.23
+sqlite3-api==0.1.0
+pyarrow==14.0.1
+tables==3.8.0
+dask==2024.2.1
+gunicorn==23.0.0

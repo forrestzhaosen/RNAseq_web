@@ -1,15 +1,20 @@
 # Clinical RNA-seq Data Viewer
 
-A web application for querying and visualizing RNA-seq data from TSV files, using a Flask backend and Vue.js with PrimeVue for the frontend.
+A web application for querying and visualizing RNA-seq data from SQLite databases, using a Flask backend and Vue.js with PrimeVue for the frontend.
 
 ## Project Structure
 
 ```
 ├── app.py                # Flask backend server
-├── data/                 # TSV data files
-│   ├── mrsd_splice.tsv.gz
-│   ├── splice_vault.tsv.gz
-│   └── mrsd_expression.tsv.gz
+├── db_config.py          # Database configuration
+├── data/                 # Data files
+│   ├── mrsd_splice.db    # SQLite database (converted from TSV)
+│   ├── splice_vault.db   # SQLite database (converted from TSV)
+│   ├── mrsd_expression.db # SQLite database (converted from TSV)
+│   ├── mrsd_splice.tsv.gz # Original TSV file (optional)
+│   ├── splice_vault.tsv.gz # Original TSV file (optional)
+│   └── mrsd_expression.tsv.gz # Original TSV file (optional)
+├── tsv_to_sql_all.py    # Utility to convert TSV files to SQLite
 ├── prime_vue/            # Vue.js frontend
 │   ├── public/
 │   ├── src/
@@ -32,26 +37,26 @@ A web application for querying and visualizing RNA-seq data from TSV files, usin
    pip install -r requirements.txt
    ```
 
-3. Run the application with the helper script (recommended):
+3. Convert TSV files to SQLite databases (if you have TSV files):
    ```bash
-   python run_app.py
+   python data/tsv_to_sql_all.py
+   ```
+   This will scan the `data` directory for TSV files and convert them to SQLite databases.
+   The conversion is done in chunks to minimize memory usage, making it suitable for large files.
+
+4. Run the application:
+   ```bash
+   python app.py
    ```
 
    If you encounter port conflicts, you can specify a different port:
    ```bash
-   python run_app.py --port=8080
+   python app.py --port=8080
    ```
-   This script will:
-   - Check if data files exist and create sample data if needed
-   - Start the Flask server
 
    The backend will run at http://localhost:8000
 
-   **Alternatively**, you can generate sample data and run the server separately:
-   ```bash
-   python create_sample_data.py  # Only if you need sample data
-   python app.py                 # Start the Flask server
-   ```
+   **Note**: If no database files are found, the application will automatically create sample databases with minimal test data.
 
 ### Frontend Setup
 
@@ -77,17 +82,32 @@ A web application for querying and visualizing RNA-seq data from TSV files, usin
 - Filter data by any column
 - Interactive data tables with sorting and pagination
 - Responsive design for all screen sizes
+- Memory-efficient SQLite database backend
+- Optimized for large datasets (millions of rows)
 
 ## Data Description
 
 This application provides a web interface to explore the following RNA-seq datasets:
 
-- **mrsd_splice.tsv.gz**: Contains splicing data
-- **splice_vault.tsv.gz**: Contains splicing vault information
-- **mrsd_expression.tsv.gz**: Contains expression data
+- **mrsd_splice**: Contains splicing data
+- **splice_vault**: Contains splicing vault information (6.7+ million rows)
+- **mrsd_expression**: Contains expression data
+
+All datasets are stored in SQLite databases for efficient querying and minimal memory usage.
+
+## Memory Optimization
+
+The application uses several techniques to minimize memory usage:
+
+1. **SQLite Database Storage**: All data is stored in SQLite databases rather than loaded into memory
+2. **SQL Query Pagination**: Data is retrieved from the database in small pages as needed
+3. **Direct SQL Filtering**: Search operations are performed directly in SQL rather than in-memory
+4. **Chunked Processing**: Large file operations are performed in chunks to limit memory usage
+5. **Connection Management**: Database connections are properly managed to prevent resource leaks
 
 ## Technologies Used
 
-- **Backend**: Python, Flask, Pandas
+- **Backend**: Python, Flask, SQLAlchemy, SQLite
 - **Frontend**: Vue.js, PrimeVue, Axios
-- **Data Processing**: Pandas for TSV parsing
+- **Data Processing**: SQL for efficient querying
+- **Data Conversion**: Pandas for TSV to SQLite conversion (during setup only)

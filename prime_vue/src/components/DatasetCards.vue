@@ -81,7 +81,33 @@ export default {
 
       try {
         const response = await axios.get(`${baseUrl}/api/datasets`, { timeout: 5000 })
-        this.datasets = response.data
+        let datasets = response.data
+
+        // Sort datasets in desired order: mrsd_splice, mrsd_expression, splice_vault
+        const desiredOrder = ['mrsd_splice', 'mrsd_expression', 'splice_vault'];
+
+        // Sort datasets according to the desired order
+        datasets.sort((a, b) => {
+          const indexA = desiredOrder.indexOf(a);
+          const indexB = desiredOrder.indexOf(b);
+
+          // If both items are in our desired order array, sort by that order
+          if (indexA !== -1 && indexB !== -1) {
+            return indexA - indexB;
+          }
+          // If only a is in the desired order array, it comes first
+          if (indexA !== -1) {
+            return -1;
+          }
+          // If only b is in the desired order array, it comes first
+          if (indexB !== -1) {
+            return 1;
+          }
+          // If neither is in the desired order array, maintain original order
+          return 0;
+        });
+
+        this.datasets = datasets;
 
         if (this.datasets.length === 0) {
           this.error = 'No datasets available. Please check that the data files exist and are in the correct format.';
