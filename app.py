@@ -6,6 +6,9 @@ import os
 import logging
 import math
 from data.db_config import DATABASE_FILES, DATASET_TABLES
+from werkzeug.middleware.proxy_fix import ProxyFix
+import sys
+
 
 # Setup logging
 logging.basicConfig(level=logging.INFO)
@@ -14,9 +17,11 @@ logger = logging.getLogger(__name__)
 # Parse command line arguments
 parser = argparse.ArgumentParser(description='Run the Flask server for RNA-seq data viewer')
 parser.add_argument('--port', type=int, default=8000, help='Port to run the server on (default: 8000)')
-args = parser.parse_args()
+args = parser.parse_args(args=[] if 'gunicorn' in sys.argv[0] else None)
 
 app = Flask(__name__)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1, x_prefix=1)
+
 # Enable CORS for all routes and origins
 CORS(app, resources={r"/*": {"origins": "*"}})
 
@@ -218,6 +223,20 @@ def query_data(dataset_name, search_term=None, search_column=None, page=1, per_p
         return {'data': [], 'total': 0, 'error': f'Unexpected error: {str(e)}'}
 
 # API Routes
+# Add a route to handle the root path under /rnaseq/
+@app.route('/')
+def index():
+    return jsonify({
+        'message': 'RNA-seq Data Viewer API',
+        'status': 'running',
+        'endpoints': [
+            '/api/health',
+            '/api/datasets',
+            '/api/columns/<dataset>',
+            '/api/data/<dataset>'
+        ]
+    })
+
 @app.route('/api/datasets', methods=['GET'])
 def get_datasets():
     """Get list of available datasets"""
