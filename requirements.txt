@@ -3,7 +3,7 @@ flask-cors==6.0.1
 pandas==2.3.1
 numpy==2.3.1
 sqlalchemy==2.0.23
-sqlite3-api==0.1.0
+sqlite3-api==2.0.2
 pyarrow==14.0.1
 tables==3.8.0
 dask==2024.2.1
