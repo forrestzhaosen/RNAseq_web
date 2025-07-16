@@ -1,7 +1,10 @@
 bind = "127.0.0.1:8000"
-workers = 2
+workers = 4  # Adjust based on your server's CPU cores (2x number of cores + 1)
 worker_class = "sync"
 worker_connections = 1000
 timeout = 60
 max_requests = 1000
 max_requests_jitter = 100
+accesslog = "/var/log/clinical-rnaseq/access.log"
+errorlog = "/var/log/clinical-rnaseq/error.log"
+loglevel = "info"
