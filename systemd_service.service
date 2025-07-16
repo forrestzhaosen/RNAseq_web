@@ -3,11 +3,11 @@ Description=Clinical RNAseq Flask Application
 After=network.target
 
 [Service]
-User=www-data
-Group=www-data
-WorkingDirectory=/var/www/clinical-rnaseq.com
-Environment="PATH=/var/www/clinical-rnaseq.com/.venv/bin:/usr/local/bin:/usr/bin:/bin"
-ExecStart=/var/www/clinical-rnaseq.com/.venv/bin/gunicorn -c gunicorn.conf.py app:app
+User=ubuntu
+Group=ubuntu
+WorkingDirectory=/home/ubuntu/RNAseq_web
+Environment="PATH=/home/ubuntu/RNAseq_web/.venv/bin:/usr/local/bin:/usr/bin:/bin"
+ExecStart=/home/ubuntu/RNAseq_web/.venv/bin/gunicorn -c gunicorn.conf.py app:app
 Restart=always
 
 [Install]
