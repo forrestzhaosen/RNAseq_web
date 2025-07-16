@@ -58,9 +58,9 @@ export default {
       this.loading = true;
       this.error = null;
 
-      // Base URL for API requests - using window.location.hostname to make it work in any environment
-      const baseUrl = `http://${window.location.hostname}:8000`;
-      console.log(`Connecting to backend at: ${baseUrl}`);
+      // Base URL for API requests - using relative URL to work with nginx proxy
+      const baseUrl = ``;
+      console.log(`Connecting to backend with relative URLs`);
 
       try {
         const response = await axios.get(`${baseUrl}/api/datasets`, { timeout: 5000 })

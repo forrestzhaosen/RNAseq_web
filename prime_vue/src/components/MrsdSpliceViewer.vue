@@ -128,7 +128,7 @@ export default {
     },
 
     async fetchColumns() {
-      const baseUrl = `http://${window.location.hostname}:8000`;
+      const baseUrl = ``;
       this.loading = true
       try {
         const response = await axios.get(`${baseUrl}/api/columns/${this.dataset}`)
@@ -143,7 +143,7 @@ export default {
     },
 
     async fetchData(page = 1) {
-      const baseUrl = `http://${window.location.hostname}:8000`;
+      const baseUrl = ``;
       this.loading = true
       this.error = null
       try {

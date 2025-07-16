@@ -161,7 +161,7 @@ export default {
     },
 
     async fetchColumns() {
-      const baseUrl = `http://${window.location.hostname}:8000`;
+      const baseUrl = ``;
       this.loading = true;
       try {
         const response = await axios.get(`${baseUrl}/api/columns/${this.dataset}`);
@@ -184,7 +184,7 @@ export default {
       // Create a new abort controller for this request
       this.requestAbortController = new AbortController();
 
-      const baseUrl = `http://${window.location.hostname}:8000`;
+      const baseUrl = ``;
       this.loading = true;
       this.error = null;
       try {
