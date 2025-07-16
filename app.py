@@ -222,6 +222,10 @@ def query_data(dataset_name, search_term=None, search_column=None, page=1, per_p
         logger.error(f"Unexpected error for {dataset_name}: {e}")
         return {'data': [], 'total': 0, 'error': f'Unexpected error: {str(e)}'}
 
+# Initialize databases when the module is imported
+logger.info("Initializing databases on module import...")
+initialize_databases()
+
 # API Routes
 # Add a route to handle the root path under /rnaseq/
 @app.route('/')
@@ -334,10 +338,7 @@ def internal_error(error):
 if __name__ == '__main__':
     port = args.port
 
-    # Initialize databases
-    print("Initializing databases...")
-    initialize_databases()
-
+    # Databases are already initialized at module level
     active_datasets = [name for name, status in available_datasets.items() if status]
     if not active_datasets:
         print("Warning: No databases were successfully initialized.")
