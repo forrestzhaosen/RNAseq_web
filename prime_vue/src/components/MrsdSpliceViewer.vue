@@ -29,19 +29,22 @@
     <!-- Search and Filter -->
     <div class="p-grid p-align-center mb-3">
       <div class="p-col-12 p-md-4">
-        <label for="column" class="font-bold block mb-2">Search Column:</label>
-        <Dropdown id="column" v-model="selectedColumn" :options="columns"
-                 placeholder="Select column" class="w-full" />
+        <label for="geneSymbol" class="font-bold block mb-2">Gene Symbol:</label>
+        <Textarea id="geneSymbol" v-model="searchGeneSymbols" rows="3" placeholder="Enter gene symbols, one per line" class="w-full" />
       </div>
-      <div class="p-col-12 p-md-6">
-        <label for="search" class="font-bold block mb-2">Search Term:</label>
-        <span class="p-input-icon-right w-full">
-          <i class="pi pi-search" />
-          <InputText id="search" v-model="searchQuery" placeholder="Enter search term"
-                    class="w-full" />
-        </span>
+      <div class="p-col-12 p-md-2">
+        <label for="targetCount" class="font-bold block mb-2">Target Count:</label>
+        <Dropdown id="targetCount" v-model="searchTargetCount" :options="targetCountOptions" placeholder="Select target count" class="w-full" />
       </div>
-      <div class="p-col-12 p-md-2 flex align-items-end">
+      <div class="p-col-12 p-md-3">
+        <label for="sampleType" class="font-bold block mb-2">Sample Type:</label>
+        <Dropdown id="sampleType" v-model="searchSampleType" :options="sampleTypeOptions" placeholder="Select sample type" class="w-full" />
+      </div>
+      <div class="p-col-12 p-md-2">
+        <label for="percentageJunctionCovered" class="font-bold block mb-2">Percentage Junction Covered:</label>
+        <Dropdown id="percentageJunctionCovered" v-model="percentageJunctionCovered" :options="percentageJunctionCoveredOptions" placeholder="Select percentage" class="w-full" />
+      </div>
+      <div class="p-col-12 p-md-1 flex align-items-end">
         <Button label="Search" icon="pi pi-search" class="w-full" @click="onSearch" />
       </div>
     </div>
@@ -97,14 +100,25 @@
 
 <script>
 import axios from 'axios'
+import qs from 'qs'
+import Textarea from 'primevue/textarea';
 
 export default {
   name: 'MrsdSpliceViewer',
+  components: {
+    Textarea
+  },
   data() {
     return {
       columns: [],
       selectedColumn: null,
-      searchQuery: '',
+      searchGeneSymbols: '',
+      searchTargetCount: null,
+      searchSampleType: null,
+      percentageJunctionCovered: null,
+      targetCountOptions: [10, 20, 50, 100],
+      sampleTypeOptions: ['Blood', 'Fibroblast', 'IPSC', 'LCL'],
+      percentageJunctionCoveredOptions: [0.75, 0.95],
       tableData: [],
       loading: false,
       totalRecords: 0,
@@ -128,7 +142,10 @@ export default {
     },
 
     async fetchColumns() {
-      const baseUrl = ``;
+      const baseUrl =
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:8000'
+          : '';
       this.loading = true
       try {
         const response = await axios.get(`${baseUrl}/api/columns/${this.dataset}`)
@@ -143,7 +160,10 @@ export default {
     },
 
     async fetchData(page = 1) {
-      const baseUrl = ``;
+      const baseUrl =
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:8000'
+          : '';
       this.loading = true
       this.error = null
       try {
@@ -158,9 +178,21 @@ export default {
         // Standard timeout for normal-sized datasets
         const timeoutMs = 10000; // 10 seconds
 
-        if (this.searchQuery && this.selectedColumn) {
-          params.search = this.searchQuery
-          params.column = this.selectedColumn
+        console.log('searchGeneSymbols:', this.searchGeneSymbols);
+        // Append search parameters if provided
+        if (this.searchGeneSymbols) {
+          // Support both repeated param (?gene_symbols=A&gene_symbols=B) and comma-separated (?gene_symbols=A,B)
+          // Here we always send as repeated params (array), splitting on lines
+          params.gene_symbols = this.searchGeneSymbols.split('\n').map(s => s.trim()).filter(s => s);
+        }
+        if (this.searchTargetCount !== null) {
+          params.target_count = this.searchTargetCount;
+        }
+        if (this.searchSampleType !== null) {
+          params.sample_type = this.searchSampleType;
+        }
+        if (this.percentageJunctionCovered !== null) {
+          params.percentage_junction_covered = this.percentageJunctionCovered;
         }
 
         console.log(`Fetching data for ${this.dataset} with params:`, params);
@@ -174,7 +206,8 @@ export default {
           timeout: timeoutMs,
           validateStatus: function (status) {
             return status < 500; // Only reject if server error
-          }
+          },
+          paramsSerializer: params => qs.stringify(params, { arrayFormat: 'repeat',skipNulls: true,indices: false })
         });
 
         // Calculate how long the request took

@@ -26,22 +26,27 @@
       </div>
     </div>
 
-    <!-- Search and Filter -->
-    <div class="p-grid p-align-center mb-3">
+    <div class="p-grid p-align-start mb-3">
+      <!-- Gene Symbol -->
       <div class="p-col-12 p-md-4">
-        <label for="column" class="font-bold block mb-2">Search Column:</label>
-        <Dropdown id="column" v-model="selectedColumn" :options="columns"
-                 placeholder="Select column" class="w-full" />
+        <label for="geneSymbol" class="font-bold block mb-2">Gene Symbol(s):</label>
+        <Textarea id="geneSymbol" v-model="searchGeneSymbols" rows="5" class="w-full" autoResize placeholder="Enter one gene symbol per line"/>
       </div>
-      <div class="p-col-12 p-md-6">
-        <label for="search" class="font-bold block mb-2">Search Term:</label>
-        <span class="p-input-icon-right w-full">
-          <i class="pi pi-search" />
-          <InputText id="search" v-model="searchQuery" placeholder="Enter search term"
-                    class="w-full" />
-        </span>
+
+      <!-- Target Count -->
+      <div class="p-col-12 p-md-4">
+        <label for="targetCount" class="font-bold block mb-2">Target Count:</label>
+        <Dropdown id="targetCount" v-model="searchTargetCount" :options="[500, 1450, 2000]" placeholder="Select target count" class="w-full" />
       </div>
-      <div class="p-col-12 p-md-2 flex align-items-end">
+
+      <!-- Sample Type -->
+      <div class="p-col-12 p-md-4">
+        <label for="sampleType" class="font-bold block mb-2">Sample Type:</label>
+        <Dropdown id="sampleType" v-model="searchSampleType" :options="['Blood', 'Fibroblast', 'IPSC', 'LCL']" placeholder="Select sample type" class="w-full" />
+      </div>
+
+      <!-- Search Button -->
+      <div class="p-col-12 mt-3">
         <Button label="Search" icon="pi pi-search" class="w-full" @click="onSearch" />
       </div>
     </div>
@@ -85,9 +90,6 @@
             <span v-else-if="field === 'hgnc_symbol'" class="gene-symbol">
               {{ data[field] }}
             </span>
-            <span v-else-if="isExpressionValue(field, data[field])" :class="getExpressionClass(data[field])">
-              {{ formatExpressionValue(data[field]) }}
-            </span>
             <span v-else>
               {{ data[field] }}
             </span>
@@ -100,14 +102,22 @@
 
 <script>
 import axios from 'axios'
+import qs from 'qs'
+import Textarea from 'primevue/textarea';
 
 export default {
   name: 'MrsdExpressionViewer',
+  components: {
+    Textarea
+  },
   data() {
     return {
       columns: [],
       selectedColumn: null,
       searchQuery: '',
+      searchGeneSymbols: '',
+      searchTargetCount: null,
+      searchSampleType: null,
       tableData: [],
       loading: false,
       totalRecords: 0,
@@ -130,31 +140,11 @@ export default {
         .join(' ');
     },
 
-    // Check if the field might be an expression value
-    isExpressionValue(field, value) {
-      // Expression values are typically numeric and not in the first few columns
-      return !isNaN(parseFloat(value)) &&
-             field !== 'id' &&
-             field !== 'hgnc_symbol' &&
-             field !== 'gene_id';
-    },
-
-    // Format expression values with 2 decimal places
-    formatExpressionValue(value) {
-      return parseFloat(value).toFixed(2);
-    },
-
-    // Get CSS class based on expression value
-    getExpressionClass(value) {
-      const numValue = parseFloat(value);
-      if (numValue > 2) return 'expression-high';
-      if (numValue > 0.5) return 'expression-medium';
-      if (numValue > 0) return 'expression-low';
-      return 'expression-none';
-    },
-
     async fetchColumns() {
-      const baseUrl = ``;
+      const baseUrl =
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:8000'
+          : '';
       this.loading = true
       try {
         const response = await axios.get(`${baseUrl}/api/columns/${this.dataset}`)
@@ -169,7 +159,10 @@ export default {
     },
 
     async fetchData(page = 1) {
-      const baseUrl = ``;
+      const baseUrl =
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:8000'
+          : '';
       this.loading = true
       this.error = null
       try {
@@ -184,9 +177,18 @@ export default {
         // Standard timeout for normal-sized datasets
         const timeoutMs = 10000; // 10 seconds
 
-        if (this.searchQuery && this.selectedColumn) {
-          params.search = this.searchQuery
-          params.column = this.selectedColumn
+        console.log('searchGeneSymbols:', this.searchGeneSymbols);
+
+        if (this.searchGeneSymbols) {
+          // Support both repeated param (?gene_symbols=A&gene_symbols=B) and comma-separated (?gene_symbols=A,B)
+          // Here we always send as repeated params (array), splitting on lines
+          params.gene_symbols = this.searchGeneSymbols.split('\n').map(s => s.trim()).filter(s => s);
+        }
+        if (this.searchTargetCount !== null) {
+          params.target_count = this.searchTargetCount;
+        }
+        if (this.searchSampleType) {
+          params.sample_type = this.searchSampleType;
         }
 
         console.log(`Fetching data for ${this.dataset} with params:`, params);
@@ -200,7 +202,8 @@ export default {
           timeout: timeoutMs,
           validateStatus: function (status) {
             return status < 500; // Only reject if server error
-          }
+          },
+          paramsSerializer: params => qs.stringify(params, { arrayFormat: 'repeat' })
         });
 
         // Calculate how long the request took
@@ -422,23 +425,5 @@ export default {
 .gene-symbol {
   font-weight: bold;
   color: #3498db;
-}
-
-/* Expression value styling */
-.expression-high {
-  color: #e74c3c;
-  font-weight: bold;
-}
-
-.expression-medium {
-  color: #f39c12;
-}
-
-.expression-low {
-  color: #2ecc71;
-}
-
-.expression-none {
-  color: #95a5a6;
 }
 </style>

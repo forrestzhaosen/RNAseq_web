@@ -59,8 +59,11 @@ export default {
       this.error = null;
 
       // Base URL for API requests - using relative URL to work with nginx proxy
-      const baseUrl = ``;
-      console.log(`Connecting to backend with relative URLs`);
+      const baseUrl =
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:8000'
+          : '';
+      console.log(`Connecting to backend with base URL: ${baseUrl}`);
 
       try {
         const response = await axios.get(`${baseUrl}/api/datasets`, { timeout: 5000 })

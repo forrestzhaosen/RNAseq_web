@@ -135,7 +135,7 @@ def get_table_columns(dataset_name):
         logger.error(f"Error getting columns for {dataset_name}: {e}")
         return []
 
-def query_data(dataset_name, search_term=None, search_column=None, page=1, per_page=10):
+def query_data(dataset_name, search_term=None, search_column=None, page=1, per_page=10, where_clauses=None, where_params=None):
     """Query data from database with optional filtering and pagination"""
     try:
         if not available_datasets.get(dataset_name, False):
@@ -152,9 +152,14 @@ def query_data(dataset_name, search_term=None, search_column=None, page=1, per_p
         base_query = f"SELECT * FROM {table_name}"
         count_query = f"SELECT COUNT(*) FROM {table_name}"
 
-        # Add search filter if provided
         params = []
-        if search_term and search_column:
+        # Add search filter if provided and no where_clauses
+        if where_clauses:
+            where_clause = " WHERE " + " AND ".join(where_clauses)
+            base_query += where_clause
+            count_query += where_clause
+            params.extend(where_params if where_params else [])
+        elif search_term and search_column:
             where_clause = f" WHERE {search_column} LIKE ?"
             base_query += where_clause
             count_query += where_clause
@@ -272,8 +277,6 @@ def get_data(dataset):
             return jsonify({'error': 'Dataset not found'}), 404
 
         # Get query parameters
-        search_term = request.args.get('search', '').strip()
-        search_column = request.args.get('column', '').strip()
         page = int(request.args.get('page', 1))
         per_page = int(request.args.get('per_page', 10))
 
@@ -283,19 +286,105 @@ def get_data(dataset):
         if per_page < 1 or per_page > 100:  # Limit per_page to prevent abuse
             per_page = 10
 
-        # Validate search column if provided
-        if search_column:
-            available_columns = get_table_columns(dataset)
-            if search_column not in available_columns:
-                return jsonify({'error': f'Column {search_column} not found in dataset'}), 400
+        if dataset == 'mrsd_expression':
+            # Parse dataset-specific filters
+            gene_symbols_list = request.args.getlist('gene_symbols')
+            if gene_symbols_list:
+                genes = [g.strip() for g in gene_symbols_list if g.strip()]
+            else:
+                gene_symbols_str = request.args.get('gene_symbols', '').strip()
+                genes = [g.strip() for g in gene_symbols_str.split(',') if g.strip()]
+            target_count = request.args.get('target_count', '').strip()
+            sample_type = request.args.get('sample_type', '').strip()
 
-        # Query data
-        result = query_data(dataset, search_term, search_column, page, per_page)
+            where_clauses = []
+            where_params = []
 
-        if 'error' in result and result['error']:
-            return jsonify({'error': result['error']}), 500
+            if genes:
+                placeholders = ','.join('?' for _ in genes)
+                # Use correct column name for gene symbol filtering
+                where_clauses.append(f"hgnc_symbol IN ({placeholders})")
+                where_params.extend(genes)
 
-        return jsonify(result)
+            if target_count:
+                where_clauses.append("target_count = ?")
+                where_params.append(target_count)
+
+            if sample_type:
+                where_clauses.append("sample_type = ?")
+                where_params.append(sample_type)
+
+            result = query_data(dataset, page=page, per_page=per_page, where_clauses=where_clauses, where_params=where_params)
+
+            if 'error' in result and result['error']:
+                return jsonify({'error': result['error']}), 500
+
+            return jsonify(result)
+
+        elif dataset == 'mrsd_splice':
+            # Parse filters for mrsd_splice
+            gene_symbols_list = (
+                    request.args.getlist('gene_symbols') or
+                    request.args.getlist('gene_symbols[]')
+            )
+            if gene_symbols_list:
+                genes = [g.strip() for g in gene_symbols_list if g.strip()]
+            else:
+                gene_symbols_str = request.args.get('gene_symbols', '').strip()
+                genes = [g.strip() for g in gene_symbols_str.split(',') if g.strip()]
+            target_count = request.args.get('target_count', '').strip()
+            sample_type = request.args.get('sample_type', '').strip()
+            percentage_junction_covered = request.args.get('percentage_junction_covered', '').strip()
+
+            where_clauses = []
+            where_params = []
+
+            if genes:
+                placeholders = ','.join('?' for _ in genes)
+                # Use correct column name for gene symbol filtering
+                where_clauses.append(f"hgnc_symbol IN ({placeholders})")
+                where_params.extend(genes)
+
+            if target_count:
+                where_clauses.append("target_count = ?")
+                where_params.append(target_count)
+
+            if sample_type:
+                where_clauses.append("sample_type = ?")
+                where_params.append(sample_type)
+
+            if percentage_junction_covered:
+                try:
+                    pct_val = float(percentage_junction_covered)
+                    where_clauses.append("percentage_junction_covered = ?")
+                    where_params.append(pct_val)
+                except ValueError:
+                    return jsonify({'error': 'percentage_junction_covered must be a number'}), 400
+
+            result = query_data(dataset, page=page, per_page=per_page, where_clauses=where_clauses, where_params=where_params)
+
+            if 'error' in result and result['error']:
+                return jsonify({'error': result['error']}), 500
+
+            return jsonify(result)
+
+        else:
+            search_term = request.args.get('search', '').strip()
+            search_column = request.args.get('column', '').strip()
+
+            # Validate search column if provided
+            if search_column:
+                available_columns = get_table_columns(dataset)
+                if search_column not in available_columns:
+                    return jsonify({'error': f'Column {search_column} not found in dataset'}), 400
+
+            # Query data
+            result = query_data(dataset, search_term, search_column, page, per_page)
+
+            if 'error' in result and result['error']:
+                return jsonify({'error': result['error']}), 500
+
+            return jsonify(result)
 
     except ValueError as e:
         return jsonify({'error': f'Invalid parameter: {str(e)}'}), 400
