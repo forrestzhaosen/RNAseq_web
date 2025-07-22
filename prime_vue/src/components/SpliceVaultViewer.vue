@@ -12,9 +12,9 @@
 
     <!-- Dataset title -->
     <div class="dataset-header p-mb-4">
-      <h2>Splice Vault Data</h2>
+      <h2>SpliceVault-deep</h2>
       <div class="dataset-description">
-        Large dataset with detailed splice junction information
+        Find naturally occurring alternative splicing identified by deep RNA-seq
       </div>
     </div>
 
@@ -23,8 +23,7 @@
       <div class="p-message-wrapper">
         <span class="p-message-icon pi pi-exclamation-triangle"></span>
         <div class="p-message-text">
-          This is a large dataset (6.7+ million rows). Loading and searching may take longer than usual.
-          Results are limited to 5 records per page for better performance.
+          This is a large dataset. Loading and searching may take longer than usual.
         </div>
       </div>
     </div>
@@ -67,6 +66,17 @@
       </div>
     </div>
 
+    <!-- Export Button -->
+    <div class="p-mb-3 text-right">
+      <Button
+        label="Export CSV"
+        icon="pi pi-download"
+        class="p-button-success"
+        :disabled="loading"
+        @click="exportCSV"
+      />
+    </div>
+
     <!-- Data Table -->
     <div class="card">
       <DataTable
@@ -97,16 +107,19 @@
             <p>Loading large dataset. This may take a moment...</p>
           </div>
         </template>
-        <Column v-for="col in columns" :key="col" :field="col" :header="col" sortable>
+        <Column v-for="col in reorderedColumns" :key="col" :field="col" :header="col" sortable>
           <template #body="{ data, field }">
             <span v-if="data[field] === 'Infinity' || data[field] === '-Infinity' || data[field] === 'NaN'" class="special-value">
               {{ data[field] }}
             </span>
-            <span v-else-if="field === 'tx_id'" class="transcript-id">
+            <span v-else-if="field === 'gene_name'" class="transcript-id">
               {{ data[field] }}
             </span>
             <span v-else-if="isNumeric(data[field])" class="numeric-value">
               {{ formatNumber(data[field]) }}
+            </span>
+            <span v-else-if="field === 'splicing_event_class' && data[field] === 'normal splicing'" class="normal-splicing-text">
+              {{ data[field] }}
             </span>
             <span v-else>
               {{ data[field] }}
@@ -132,10 +145,24 @@ export default {
       loading: false,
       totalRecords: 0,
       currentPage: 1,
-      rowsPerPage: 5, // Smaller page size for this large dataset
+      rowsPerPage: 10,
       error: null,
       dataset: 'splice_vault',
       requestAbortController: null
+    }
+  },
+  computed: {
+    reorderedColumns() {
+      const allColumns = this.columns;
+      return [
+        'chr',
+        'splice_site_pos',
+        'donor_pos',
+        'acceptor_pos',
+        ...allColumns.filter(col =>
+          !['chr', 'splice_site_pos', 'donor_pos', 'acceptor_pos', 'strand', 'sample_ID','canonical'].includes(col)
+        )
+      ];
     }
   },
   created() {
@@ -358,6 +385,21 @@ export default {
       this.rowsPerPage = event.rows;
       console.log(`Changing page to ${newPage} with ${this.rowsPerPage} rows per page`);
       this.fetchData(newPage);
+    },
+
+    exportCSV() {
+      const baseUrl =
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:8000'
+          : '';
+      const params = new URLSearchParams();
+      params.append('per_page', this.rowsPerPage);
+      if (this.searchQuery && this.selectedColumn) {
+        params.append('search', this.searchQuery);
+        params.append('column', this.selectedColumn);
+      }
+      const url = `${baseUrl}/api/export/${this.dataset}?${params.toString()}`;
+      window.open(url, '_blank');
     }
   }
 }
@@ -456,6 +498,15 @@ export default {
 
 .numeric-value {
   font-family: monospace;
+  text-align: right;
+}
+
+.normal-splicing-text {
+  color: #27ae60;
+  font-weight: bold;
+}
+
+.text-right {
   text-align: right;
 }
 </style>

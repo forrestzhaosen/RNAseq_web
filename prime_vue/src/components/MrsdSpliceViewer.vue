@@ -12,9 +12,9 @@
 
     <!-- Dataset title -->
     <div class="dataset-header p-mb-4">
-      <h2>MRSD Splice Data</h2>
+      <h2>MRSD-deep (splice)</h2>
       <div class="dataset-description">
-        Gene splicing data with alternative transcript information
+        Calculate minimum required sequencing depth (MRSD) for your target splice junctions
       </div>
     </div>
 
@@ -47,6 +47,17 @@
       <div class="p-col-12 p-md-1 flex align-items-end">
         <Button label="Search" icon="pi pi-search" class="w-full" @click="onSearch" />
       </div>
+    </div>
+
+    <!-- Export Button -->
+    <div class="p-mb-3 text-right">
+      <Button
+        label="Export CSV"
+        icon="pi pi-download"
+        class="p-button-success"
+        :disabled="loading"
+        @click="exportCSV"
+      />
     </div>
 
     <!-- Data Table -->
@@ -336,7 +347,33 @@ export default {
       this.rowsPerPage = event.rows;
       console.log(`Changing page to ${newPage} with ${this.rowsPerPage} rows per page`);
       this.fetchData(newPage);
-    }
+    },
+
+    exportCSV() {
+      const baseUrl =
+        process.env.NODE_ENV === 'development'
+          ? 'http://localhost:8000'
+          : '';
+      const params = new URLSearchParams();
+      params.append('per_page', this.rowsPerPage);
+      if (this.searchGeneSymbols) {
+        const genes = this.searchGeneSymbols.split('\n').map(s => s.trim()).filter(s => s);
+        for (const gene of genes) {
+          params.append('gene_symbols', gene);
+        }
+      }
+      if (this.searchTargetCount !== null) {
+        params.append('target_count', this.searchTargetCount);
+      }
+      if (this.searchSampleType) {
+        params.append('sample_type', this.searchSampleType);
+      }
+      if (this.percentageJunctionCovered !== null) {
+        params.append('percentage_junction_covered', this.percentageJunctionCovered);
+      }
+      const url = `${baseUrl}/api/export/${this.dataset}?${params.toString()}`;
+      window.open(url, '_blank');
+    },
   }
 }
 </script>
@@ -429,5 +466,9 @@ export default {
 .gene-symbol {
   font-weight: bold;
   color: #3498db;
+}
+
+.text-right {
+  text-align: right;
 }
 </style>

@@ -1,6 +1,6 @@
 <template>
   <div class="dataset-cards">
-    <h2 class="section-title">Available Datasets</h2>
+    <h2 class="section-title">Available Resources</h2>
 
     <!-- Loading indicator -->
     <div v-if="loading" class="p-d-flex p-flex-column p-ai-center">
@@ -147,19 +147,22 @@ export default {
       }
     },
 
-    formatDatasetName(name) {
+    formatDatasetName(dataset) {
       // Convert snake_case to Title Case with spaces
-      return name
-        .split('_')
-        .map(word => word.charAt(0).toUpperCase() + word.slice(1))
-        .join(' ');
+      const name = {
+        'mrsd_splice': 'MRSD-deep (splice)',
+        'splice_vault': 'SpliceVault-deep (deep RNAseq)',
+        'mrsd_expression': 'MRSD-deep (expression)'
+      };
+
+      return name[dataset];
     },
 
     getDatasetDescription(dataset) {
       const descriptions = {
-        'mrsd_splice': 'Contains RNA splicing data with gene and transcript information.',
-        'splice_vault': 'Contains detailed splice junction data with counts.',
-        'mrsd_expression': 'Contains gene expression levels across different samples.'
+        'mrsd_splice': 'Calculate minimum required sequencing depth (MRSD) for your target splice junctions.',
+        'splice_vault': 'Find naturally occurring alternative splicing identified by deep RNA-seq.',
+        'mrsd_expression': 'Calculate minimum required sequencing depth (MRSD) for your target genes.'
       };
 
       return descriptions[dataset] || 'Dataset containing TSV data.';

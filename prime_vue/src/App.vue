@@ -2,8 +2,8 @@
   <div id="app">
     <div class="app-header">
       <div class="container">
-        <h1 class="app-title">Clinical RNA-seq Data Explorer</h1>
-        <p class="app-subtitle">Explore and analyze RNA sequencing datasets</p>
+        <h1 class="app-title">Clinical RNA-seq Resources</h1>
+        <p class="app-subtitle">Explore and analyze RNA sequencing datasets, optimize clinical RNA-seq design</p>
       </div>
     </div>
 
@@ -13,7 +13,7 @@
 
     <footer class="app-footer">
       <div class="container">
-        <p>&copy; 2025 RNA-seq Data Explorer</p>
+        <p>&copy; Pengfei Liu Lab, Baylor College of Medicine</p>
       </div>
     </footer>
   </div>

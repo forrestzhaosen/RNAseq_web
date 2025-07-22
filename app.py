@@ -1,4 +1,4 @@
-from flask import Flask, jsonify, request
+from flask import Flask, jsonify, request,Response
 from flask_cors import CORS
 import sqlite3
 import argparse
@@ -8,6 +8,8 @@ import math
 from data.db_config import DATABASE_FILES, DATASET_TABLES
 from werkzeug.middleware.proxy_fix import ProxyFix
 import sys
+import io
+import csv
 
 
 # Setup logging
@@ -368,6 +370,27 @@ def get_data(dataset):
 
             return jsonify(result)
 
+        elif dataset == 'splice_vault':
+            # Default filter: canonical = 1
+            where_clauses = ['canonical = ?']
+            where_params = [1]
+
+            search_term = request.args.get('search', '').strip()
+            search_column = request.args.get('column', '').strip()
+
+            if search_term and search_column:
+                available_columns = get_table_columns(dataset)
+                if search_column not in available_columns:
+                    return jsonify({'error': f'Column {search_column} not found in dataset'}), 400
+                where_clauses.append(f"{search_column} LIKE ?")
+                where_params.append(f"%{search_term}%")
+
+            result = query_data(dataset, page=page, per_page=per_page, where_clauses=where_clauses, where_params=where_params)
+
+            if 'error' in result and result['error']:
+                return jsonify({'error': result['error']}), 500
+
+            return jsonify(result)
         else:
             search_term = request.args.get('search', '').strip()
             search_column = request.args.get('column', '').strip()
@@ -391,6 +414,123 @@ def get_data(dataset):
     except Exception as e:
         logger.error(f"Error getting data for {dataset}: {e}")
         return jsonify({'error': 'Failed to get data'}), 500
+
+
+# CSV Export endpoint
+@app.route('/api/export/<dataset>', methods=['GET'])
+def export_csv(dataset):
+    try:
+        if dataset not in available_datasets or not available_datasets[dataset]:
+            return jsonify({'error': 'Dataset not found'}), 404
+
+        # Set export limits
+        max_pages = 100
+        per_page = int(request.args.get('per_page', 10))
+        if per_page < 1 or per_page > 100:
+            per_page = 10
+
+        where_clauses = []
+        where_params = []
+
+        if dataset == 'splice_vault':
+            where_clauses.append('canonical = ?')
+            where_params.append(1)
+
+            search_term = request.args.get('search', '').strip()
+            search_column = request.args.get('column', '').strip()
+
+            if search_term and search_column:
+                available_columns = get_table_columns(dataset)
+                if search_column not in available_columns:
+                    return jsonify({'error': f'Column {search_column} not found in dataset'}), 400
+                where_clauses.append(f"{search_column} LIKE ?")
+                where_params.append(f"%{search_term}%")
+
+        elif dataset == 'mrsd_expression':
+            gene_symbols_list = request.args.getlist('gene_symbols')
+            if gene_symbols_list:
+                genes = [g.strip() for g in gene_symbols_list if g.strip()]
+            else:
+                gene_symbols_str = request.args.get('gene_symbols', '').strip()
+                genes = [g.strip() for g in gene_symbols_str.split(',') if g.strip()]
+            target_count = request.args.get('target_count', '').strip()
+            sample_type = request.args.get('sample_type', '').strip()
+
+            if genes:
+                placeholders = ','.join('?' for _ in genes)
+                where_clauses.append(f"hgnc_symbol IN ({placeholders})")
+                where_params.extend(genes)
+
+            if target_count:
+                where_clauses.append("target_count = ?")
+                where_params.append(target_count)
+
+            if sample_type:
+                where_clauses.append("sample_type = ?")
+                where_params.append(sample_type)
+
+        elif dataset == 'mrsd_splice':
+            gene_symbols_list = (
+                request.args.getlist('gene_symbols') or
+                request.args.getlist('gene_symbols[]')
+            )
+            if gene_symbols_list:
+                genes = [g.strip() for g in gene_symbols_list if g.strip()]
+            else:
+                gene_symbols_str = request.args.get('gene_symbols', '').strip()
+                genes = [g.strip() for g in gene_symbols_str.split(',') if g.strip()]
+            target_count = request.args.get('target_count', '').strip()
+            sample_type = request.args.get('sample_type', '').strip()
+            percentage_junction_covered = request.args.get('percentage_junction_covered', '').strip()
+
+            if genes:
+                placeholders = ','.join('?' for _ in genes)
+                where_clauses.append(f"hgnc_symbol IN ({placeholders})")
+                where_params.extend(genes)
+
+            if target_count:
+                where_clauses.append("target_count = ?")
+                where_params.append(target_count)
+
+            if sample_type:
+                where_clauses.append("sample_type = ?")
+                where_params.append(sample_type)
+
+            if percentage_junction_covered:
+                try:
+                    pct_val = float(percentage_junction_covered)
+                    where_clauses.append("percentage_junction_covered = ?")
+                    where_params.append(pct_val)
+                except ValueError:
+                    return jsonify({'error': 'percentage_junction_covered must be a number'}), 400
+
+        # Pull data in pages up to the max page limit
+        all_data = []
+        for page in range(1, max_pages + 1):
+            result = query_data(dataset, page=page, per_page=per_page, where_clauses=where_clauses, where_params=where_params)
+            if 'error' in result and result['error']:
+                return jsonify({'error': result['error']}), 500
+            all_data.extend(result['data'])
+            if len(result['data']) < per_page:
+                break
+
+        if not all_data:
+            return jsonify({'error': 'No data available for export'}), 404
+
+        # Write CSV to in-memory buffer
+        output = io.StringIO()
+        writer = csv.DictWriter(output, fieldnames=all_data[0].keys())
+        writer.writeheader()
+        writer.writerows(all_data)
+
+        output.seek(0)
+        return Response(output, mimetype='text/csv', headers={
+            "Content-Disposition": f"attachment; filename={dataset}.csv"
+        })
+
+    except Exception as e:
+        logger.error(f"Error exporting CSV for {dataset}: {e}")
+        return jsonify({'error': 'Failed to export CSV'}), 500
 
 @app.route('/api/health', methods=['GET'])
 def health_check():
