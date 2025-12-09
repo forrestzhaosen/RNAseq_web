@@ -14,7 +14,7 @@
     <div class="dataset-header p-mb-4">
       <h2>MRSD-deep (splice)</h2>
       <div class="dataset-description">
-        Calculate minimum required sequencing depth (MRSD) for your target splice junctions
+        Calculate minimum required sequencing depth (MRSD, in number of reads) for your target splice junctions
       </div>
     </div>
 

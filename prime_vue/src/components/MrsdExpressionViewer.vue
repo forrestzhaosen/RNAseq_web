@@ -14,7 +14,7 @@
     <div class="dataset-header p-mb-4">
       <h2>MRSD-deep (expression)</h2>
       <div class="dataset-description">
-        Calculate minimum required sequencing depth (MRSD) for your target genes
+        Calculate minimum required sequencing depth (MRSD, in number of reads) for your target genes
       </div>
     </div>
 
@@ -36,7 +36,7 @@
       <!-- Target Count -->
       <div class="p-col-12 p-md-4">
         <label for="targetCount" class="font-bold block mb-2">Target Count:</label>
-        <Dropdown id="targetCount" v-model="searchTargetCount" :options="[500, 1450, 2000]" placeholder="Select target count" class="w-full" />
+        <Dropdown id="targetCount" v-model="searchTargetCount" :options="[1000, 5000, 10000]" placeholder="Select target count" class="w-full" />
       </div>
 
       <!-- Sample Type -->
